@@ -4,13 +4,20 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sistema de Notas - Henry Ford</title>
+  <!-- Estilos de Tailwind CSS -->
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
-  <script src="https://unpkg.com/lucide-react@0.263.1/dist/umd/lucide-react.min.js"></script>
+  <!-- React y ReactDOM -->
+  <script src="https://unpkg.com/react@17/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@17/umd/react-dom.development.js"></script>
+  <!-- Babel para JSX -->
+  <script src="https://unpkg.com/babel-standalone@6.26.0/babel.min.js"></script>
+  <!-- Lucide React para íconos -->
+  <script src="https://unpkg.com/lucide-react@0.263.1/dist/umd/lucide-react.js"></script>
+  <!-- SheetJS para manejo de Excel -->
   <script src="https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <!-- PapaParse para CSV -->
   <script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
+  
   <style>
     body {
       font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -18,10 +25,39 @@
   </style>
 </head>
 <body>
-  <div id="root"></div>
+  <div id="root">
+    <!-- El contenido se cargará aquí -->
+    <div class="flex items-center justify-center h-screen bg-gray-100">
+      <div class="text-center">
+        <h1 class="text-3xl font-bold text-blue-700 mb-4">Cargando Sistema de Notas</h1>
+        <p class="text-gray-600">Por favor espere mientras se inicializa la aplicación...</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Script principal con el Sistema de Notas -->
   <script type="text/babel" src="sistema.js"></script>
+  
+  <!-- Script para renderizar la aplicación -->
   <script type="text/babel">
-    ReactDOM.render(<SistemaNotas />, document.getElementById('root'));
+    // Esperar a que todos los recursos se carguen
+    window.addEventListener('load', function() {
+      try {
+        ReactDOM.render(<SistemaNotas />, document.getElementById('root'));
+        console.log("Aplicación renderizada correctamente");
+      } catch (error) {
+        console.error("Error al renderizar la aplicación:", error);
+        document.getElementById('root').innerHTML = 
+          `<div class="flex items-center justify-center h-screen bg-gray-100">
+            <div class="text-center p-6 bg-white rounded shadow-md">
+              <h1 class="text-3xl font-bold text-red-700 mb-4">Error de inicialización</h1>
+              <p class="text-gray-700 mb-2">Ha ocurrido un error al cargar el sistema.</p>
+              <p class="text-gray-600 text-sm mb-4">Error: ${error.message}</p>
+              <p class="text-gray-600">Por favor, actualiza la página o contacta al administrador.</p>
+            </div>
+          </div>`;
+      }
+    });
   </script>
 </body>
 </html>
