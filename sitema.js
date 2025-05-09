@@ -57,3 +57,1361 @@ const SistemaNotas = () => {
     '2do Cuatrimestre',
     'Cierre Anual'
   ];
+
+  // Efecto para seleccionar materias del profesor actual
+  React.useEffect(() => {
+    if (profesorActual) {
+      const profesor = profesores.find(p => p.id === profesorActual);
+      if (profesor) {
+        const materiasDelProfesor = materias.filter(m => 
+          profesor.materias.includes(m.nombre)
+        );
+        setMateriasProfesor(materiasDelProfesor);
+      }
+    } else {
+      setMateriasProfesor([]);
+    }
+  }, [profesorActual, profesores, materias]);
+  
+  // Función para guardar todos los datos
+  const guardarDatos = () => {
+    try {
+      // Crear un objeto con todos los datos
+      const datos = {
+        alumnos,
+        materias,
+        profesores,
+        calificaciones,
+        fecha: new Date().toISOString()
+      };
+      
+      // Convertir a JSON y guardar en localStorage
+      localStorage.setItem('sistemaNotasHenryFord', JSON.stringify(datos));
+      
+      // También permitir descargar como archivo JSON
+      const blob = new Blob([JSON.stringify(datos, null, 2)], {type: 'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `datos_sistema_notas_${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      
+      setMensaje('Datos guardados correctamente');
+    } catch (error) {
+      console.error('Error al guardar datos:', error);
+      setMensaje('Error al guardar los datos');
+    }
+  };
+  
+  // Función para cargar datos guardados
+  const cargarDatosGuardados = () => {
+    try {
+      const datosGuardados = localStorage.getItem('sistemaNotasHenryFord');
+      if (datosGuardados) {
+        const datos = JSON.parse(datosGuardados);
+        setAlumnos(datos.alumnos || []);
+        setMaterias(datos.materias || []);
+        setProfesores(datos.profesores || []);
+        setCalificaciones(datos.calificaciones || []);
+        setMensaje('Datos cargados correctamente');
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Error al cargar datos guardados:', error);
+      setMensaje('Error al cargar datos guardados');
+      return false;
+    }
+  };
+
+  // Función para importar datos desde archivo JSON
+  const importarDatosJSON = async (event) => {
+    try {
+      const file = event.target.files[0];
+      if (!file) return;
+      
+      const texto = await file.text();
+      const datos = JSON.parse(texto);
+      
+      // Validar que el archivo tenga la estructura correcta
+      if (!datos.alumnos || !datos.materias || !datos.profesores || !datos.calificaciones) {
+        setMensaje('El archivo no tiene el formato correcto');
+        return;
+      }
+      
+      setAlumnos(datos.alumnos);
+      setMaterias(datos.materias);
+      setProfesores(datos.profesores);
+      setCalificaciones(datos.calificaciones);
+      
+      setMensaje('Datos importados correctamente');
+    } catch (error) {
+      console.error('Error al importar datos:', error);
+      setMensaje('Error al importar los datos');
+    }
+  };
+  
+  // Efecto para cargar datos guardados al iniciar
+  React.useEffect(() => {
+    cargarDatosGuardados();
+  }, []);
+  
+  // Función para actualizar calificaciones
+  const actualizarCalificacion = (alumnoId, materiaId, periodo, campo, valor) => {
+    setCalificaciones(prevCalificaciones => {
+      return prevCalificaciones.map(cal => {
+        if (cal.alumnoId === alumnoId && cal.materiaId === materiaId && cal.periodo === periodo) {
+          return { ...cal, [campo]: valor };
+        }
+        return cal;
+      });
+    });
+  };
+  
+  // Función para exportar informes a Excel
+  const exportarInformeExcel = (alumnoId) => {
+    const alumno = alumnos.find(a => a.id === alumnoId);
+    if (!alumno) return;
+    
+    // Crear un nuevo libro de trabajo
+    const wb = XLSX.utils.book_new();
+    
+    // Datos para la hoja
+    const datos = [];
+    
+    // Encabezado
+    datos.push(["ESCUELA TÉCNICA HENRY FORD"]);
+    datos.push(["INFORME DE AVANCE"]);
+    datos.push([`Alumno: ${alumno.nombre}`, `Matrícula: ${alumno.matricula}`]);
+    datos.push([`Fecha de emisión: ${new Date().toLocaleDateString()}`]);
+    datos.push([]);
+
+    
+// Datos para cada período
+    const calificacionesAlumno = calificaciones.filter(c => c.alumnoId === alumnoId);
+    
+    for (const periodo of periodos) {
+      const materiasConCalificaciones = materias.filter(materia => {
+        const cal = calificacionesAlumno.find(c => 
+          c.materiaId === materia.id && c.periodo === periodo
+        );
+        return cal && (cal.desempeno || cal.valoracion || cal.observaciones);
+      });
+      
+      if (materiasConCalificaciones.length === 0) continue;
+      
+      datos.push([periodo]);
+      datos.push(["Materia", "Valoración", "Desempeño", "Actividades", "Calificación", "Observaciones"]);
+      
+      for (const materia of materiasConCalificaciones) {
+        const cal = calificacionesAlumno.find(c => 
+          c.materiaId === materia.id && c.periodo === periodo
+        );
+        
+        if (cal) {
+          datos.push([
+            materia.nombre,
+            cal.valoracion || "-",
+            cal.desempeno || "-",
+            cal.actividades || "-",
+            cal.calificacionNumerica || "-",
+            cal.observaciones || "-"
+          ]);
+        }
+      }
+      
+      datos.push([]);
+    }
+    
+    // Crear la hoja
+    const ws = XLSX.utils.aoa_to_sheet(datos);
+    
+    // Añadir la hoja al libro
+    XLSX.utils.book_append_sheet(wb, ws, "Informe");
+    
+    // Descargar el archivo
+    XLSX.writeFile(wb, `Informe_${alumno.nombre.replace(/,/g, "")}_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+  
+  // Función para exportar un boletín a Excel
+  const exportarBoletinExcel = (alumnoId) => {
+    const alumno = alumnos.find(a => a.id === alumnoId);
+    if (!alumno) return;
+    
+    // Crear un nuevo libro de trabajo
+    const wb = XLSX.utils.book_new();
+    
+    // Datos para la hoja
+    const datos = [];
+
+    // Encabezado
+    datos.push(["ESCUELA TÉCNICA HENRY FORD"]);
+    datos.push(["BOLETÍN DE CALIFICACIONES"]);
+    datos.push([`Alumno: ${alumno.nombre}`, `Matrícula: ${alumno.matricula}`]);
+    datos.push(["Ciclo lectivo 2025 - 6to Año"]);
+    datos.push([]);
+    
+    // Encabezados de la tabla
+    datos.push(["Materia", "1er Cuatrimestre", "2do Cuatrimestre", "Calificación Final"]);
+    
+    // Filtrar calificaciones por cuatrimestres y cierre anual
+    const periodosCuatrimestrales = ['1er Cuatrimestre', '2do Cuatrimestre', 'Cierre Anual'];
+    const calificacionesAlumno = calificaciones.filter(c => 
+      c.alumnoId === alumnoId && periodosCuatrimestrales.includes(c.periodo)
+    );
+    
+    // Agregar filas para cada materia
+    for (const materia of materias) {
+      const cal1C = calificacionesAlumno.find(c => 
+        c.materiaId === materia.id && c.periodo === '1er Cuatrimestre'
+      );
+      const cal2C = calificacionesAlumno.find(c => 
+        c.materiaId === materia.id && c.periodo === '2do Cuatrimestre'
+      );
+      const calFinal = calificacionesAlumno.find(c => 
+        c.materiaId === materia.id && c.periodo === 'Cierre Anual'
+      );
+      
+      datos.push([
+        materia.nombre,
+        cal1C?.calificacionNumerica || "-",
+        cal2C?.calificacionNumerica || "-",
+        calFinal?.calificacionNumerica || "-"
+      ]);
+    }
+    
+    datos.push([]);
+    datos.push(["Firma del Director", "Firma del Tutor", "Firma del Alumno"]);
+    
+    // Crear la hoja
+    const ws = XLSX.utils.aoa_to_sheet(datos);
+    
+    // Añadir la hoja al libro
+    XLSX.utils.book_append_sheet(wb, ws, "Boletín");
+    
+    // Descargar el archivo
+    XLSX.writeFile(wb, `Boletin_${alumno.nombre.replace(/,/g, "")}_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
+  // Función para exportar datos a formato Excel compatible con el sistema actual
+  const exportarPlanillaProfesor = (profesorId, materiaId) => {
+    const profesor = profesores.find(p => p.id === profesorId);
+    const materia = materias.find(m => m.id === materiaId);
+    
+    if (!profesor || !materia) {
+      setMensaje('Seleccione un profesor y una materia');
+      return;
+    }
+    
+    // Crear un nuevo libro de trabajo
+    const wb = XLSX.utils.book_new();
+    
+    // Datos para la hoja
+    const datos = [];
+    
+    // Encabezado
+    datos.push([4, "Planilla para la carga de informes y boletines"]);
+    datos.push(["EEST HENRY FORD"]);
+    datos.push(["6to AÑO 2025"]);
+    datos.push([materia.nombre]);
+    datos.push([profesor.nombre]);
+    datos.push([]);
+    datos.push([]);
+    
+    // Fechas de informe
+    const fechasInforme = [
+      "16 de Mayo",
+      "11 de Julio",
+      "26 de Septiembre",
+      "A definir"
+    ];
+    
+    // Agregar encabezados de períodos
+    const filaEncabezados = Array(70).fill(null);
+    filaEncabezados[23] = `Informe de avance bimestral al ${fechasInforme[0]}`;
+    filaEncabezados[26] = `Informe de avance al ${fechasInforme[1]}`;
+    filaEncabezados[31] = `Informe de avance bimestral al ${fechasInforme[2]}`;
+    filaEncabezados[34] = `Informe de avance al ${fechasInforme[3]}`;
+    
+    datos.push(filaEncabezados);
+    
+    // Agregar encabezados de datos
+    const filaEncabezadosDatos = Array(70).fill(null);
+    filaEncabezadosDatos[54] = "Alumnos";
+    filaEncabezadosDatos[55] = "Matr";
+    filaEncabezadosDatos[58] = "Materias";
+    filaEncabezadosDatos[59] = "Profesor";
+    filaEncabezadosDatos[61] = "Activ";
+    filaEncabezadosDatos[62] = "Val";
+    filaEncabezadosDatos[63] = "Des";
+    filaEncabezadosDatos[64] = "Obs";
+    filaEncabezadosDatos[65] = "NUM";
+    
+    datos.push(filaEncabezadosDatos);
+
+    // Agregar filas para cada alumno
+    alumnos.forEach((alumno, index) => {
+      const filaAlumno = Array(70).fill(null);
+      filaAlumno[54] = alumno.nombre;
+      filaAlumno[55] = alumno.matricula;
+      filaAlumno[56] = index + 1;
+      filaAlumno[58] = materia.nombre;
+      filaAlumno[59] = profesor.nombre;
+      
+      // Buscar calificaciones para este alumno, materia y período actual
+      const cal = calificaciones.find(c => 
+        c.alumnoId === alumno.id && 
+        c.materiaId === materia.id && 
+        c.periodo === periodoActual
+      );
+      
+      if (cal) {
+        filaAlumno[61] = cal.actividades;
+        filaAlumno[62] = cal.valoracion;
+        filaAlumno[63] = cal.desempeno;
+        filaAlumno[64] = cal.observaciones;
+        filaAlumno[65] = cal.calificacionNumerica;
+      }
+      
+      datos.push(filaAlumno);
+    });
+    
+    // Crear la hoja y ajustar el ancho de las columnas
+    const ws = XLSX.utils.aoa_to_sheet(datos);
+    
+    // Añadir la hoja al libro
+    XLSX.utils.book_append_sheet(wb, ws, "P");
+    
+    // Descargar el archivo
+    XLSX.writeFile(wb, `Planilla_${materia.nombre}_${profesor.nombre.replace(/,/g, "")}.xlsx`);
+    
+    setMensaje(`Planilla exportada para ${materia.nombre} - ${profesor.nombre}`);
+  };
+  
+  // Función para manejar la carga de archivos
+  const handleFileUpload = async (event) => {
+    try {
+      const file = event.target.files[0];
+      if (!file) return;
+      
+      const arrayBuffer = await file.arrayBuffer();
+      const data = new Uint8Array(arrayBuffer);
+      
+      // Procesar archivo Excel
+      const workbook = XLSX.read(data, {
+        cellStyles: true,
+        cellFormulas: true,
+        cellDates: true,
+        cellNF: true,
+        sheetStubs: true
+      });
+      
+      const firstSheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[firstSheetName];
+      
+      // Convertir a JSON
+      const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+      
+      // Procesar datos
+      procesarDatos(jsonData);
+      
+      setFileData(data);
+      setMensaje('Archivo cargado correctamente');
+      setArchivosCargados(prev => prev + 1);
+    } catch (error) {
+      console.error('Error al cargar el archivo:', error);
+      setMensaje('Error al cargar el archivo');
+    }
+  };
+
+  // Función para importar planilla de profesor
+  const importarPlanillaProfesor = async (event) => {
+    try {
+      const file = event.target.files[0];
+      if (!file) return;
+      
+      const arrayBuffer = await file.arrayBuffer();
+      const data = new Uint8Array(arrayBuffer);
+      
+      // Procesar archivo Excel
+      const workbook = XLSX.read(data, {
+        cellStyles: true,
+        cellFormulas: true,
+        cellDates: true,
+        cellNF: true,
+        sheetStubs: true
+      });
+      
+      const firstSheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[firstSheetName];
+      
+      // Convertir a JSON
+      const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+      
+      // Identificar materia y profesor
+      let materiaEncontrada = null;
+      let profesorEncontrado = null;
+      
+      for (let i = 0; i < jsonData.length; i++) {
+        const row = jsonData[i];
+        
+        // La fila 3 suele contener el nombre de la materia
+        if (i === 3 && row[0]) {
+          materiaEncontrada = materias.find(m => m.nombre === row[0]);
+        }
+        
+        // La fila 4 suele contener el nombre del profesor
+        if (i === 4 && row[0]) {
+          profesorEncontrado = profesores.find(p => p.nombre === row[0]);
+        }
+      }
+      
+      if (!materiaEncontrada || !profesorEncontrado) {
+        setMensaje('No se pudo identificar la materia o el profesor en la planilla');
+        return;
+      }
+      
+      // Buscar índices de columnas importantes
+      let columnaAlumnos = null;
+      let columnaMatriculas = null;
+      let columnaActividades = null;
+      let columnaValoracion = null;
+      let columnaDesempeno = null;
+      let columnaObservaciones = null;
+      let columnaCalificacion = null;
+      
+      for (const row of jsonData) {
+        for (let j = 0; j < row.length; j++) {
+          if (row[j] === "Alumnos") columnaAlumnos = j;
+          if (row[j] === "Matr") columnaMatriculas = j;
+          if (row[j] === "Activ") columnaActividades = j;
+          if (row[j] === "Val") columnaValoracion = j;
+          if (row[j] === "Des") columnaDesempeno = j;
+          if (row[j] === "Obs") columnaObservaciones = j;
+          if (row[j] === "NUM") columnaCalificacion = j;
+        }
+      }
+
+   if (!columnaAlumnos || !columnaDesempeno) {
+        setMensaje('No se encontraron las columnas necesarias en la planilla');
+        return;
+      }
+      
+      // Importar calificaciones
+      let actualizadas = 0;
+      
+      for (const row of jsonData) {
+        if (row[columnaAlumnos] && typeof row[columnaAlumnos] === 'string' && 
+            row[columnaAlumnos].includes(',')) {
+          
+          // Buscar el alumno correspondiente
+          const alumnoEncontrado = alumnos.find(a => a.nombre === row[columnaAlumnos]);
+          
+          if (alumnoEncontrado) {
+            // Buscar o crear la calificación
+            let calificacion = calificaciones.find(c =>
+              c.alumnoId === alumnoEncontrado.id &&
+              c.materiaId === materiaEncontrada.id &&
+              c.periodo === periodoActual
+            );
+            
+            if (!calificacion) {
+              // Si no existe, crear una calificación nueva
+              calificacion = {
+                alumnoId: alumnoEncontrado.id,
+                materiaId: materiaEncontrada.id,
+                periodo: periodoActual,
+                actividades: '',
+                valoracion: '',
+                desempeno: '',
+                observaciones: '',
+                calificacionNumerica: null
+              };
+              
+              setCalificaciones(prev => [...prev, calificacion]);
+            } else {
+              // Actualizar calificación existente
+              const nuevaCalificacion = { ...calificacion };
+              
+              if (columnaActividades !== null && row[columnaActividades])
+                nuevaCalificacion.actividades = row[columnaActividades];
+                
+              if (columnaValoracion !== null && row[columnaValoracion])
+                nuevaCalificacion.valoracion = row[columnaValoracion];
+                
+              if (columnaDesempeno !== null && row[columnaDesempeno])
+                nuevaCalificacion.desempeno = row[columnaDesempeno];
+                
+              if (columnaObservaciones !== null && row[columnaObservaciones])
+                nuevaCalificacion.observaciones = row[columnaObservaciones];
+                
+              if (columnaCalificacion !== null && row[columnaCalificacion])
+                nuevaCalificacion.calificacionNumerica = row[columnaCalificacion];
+              
+              actualizarCalificacion(
+                nuevaCalificacion.alumnoId,
+                nuevaCalificacion.materiaId,
+                nuevaCalificacion.periodo,
+                'actividades',
+                nuevaCalificacion.actividades
+              );
+              
+              actualizarCalificacion(
+                nuevaCalificacion.alumnoId,
+                nuevaCalificacion.materiaId,
+                nuevaCalificacion.periodo,
+                'valoracion',
+                nuevaCalificacion.valoracion
+              );
+              
+              actualizarCalificacion(
+                nuevaCalificacion.alumnoId,
+                nuevaCalificacion.materiaId,
+                nuevaCalificacion.periodo,
+                'desempeno',
+                nuevaCalificacion.desempeno
+              );
+              
+              actualizarCalificacion(
+                nuevaCalificacion.alumnoId,
+                nuevaCalificacion.materiaId,
+                nuevaCalificacion.periodo,
+                'observaciones',
+                nuevaCalificacion.observaciones
+              );
+              
+              actualizarCalificacion(
+                nuevaCalificacion.alumnoId,
+                nuevaCalificacion.materiaId,
+                nuevaCalificacion.periodo,
+                'calificacionNumerica',
+                nuevaCalificacion.calificacionNumerica
+              );
+              
+              actualizadas++;
+            }
+          }
+        }
+      }
+      
+      setMensaje(`Planilla importada correctamente. ${actualizadas} calificaciones actualizadas.`);
+    } catch (error) {
+      console.error('Error al importar planilla:', error);
+      setMensaje('Error al importar la planilla');
+    }
+  };
+
+  // Función para procesar los datos del Excel
+  const procesarDatos = (jsonData) => {
+    // Buscar índices de columnas importantes
+    let columnaAlumnos = null;
+    let columnaMatriculas = null;
+    let columnaMaterias = null;
+    let columnaProfesores = null;
+    
+    // Buscar las columnas clave
+    for (let i = 0; i < jsonData.length; i++) {
+      const row = jsonData[i];
+      for (let j = 0; j < row.length; j++) {
+        if (row[j] === "Alumnos") columnaAlumnos = j;
+        if (row[j] === "Matr") columnaMatriculas = j + 1; // Asumiendo que está justo al lado
+        if (row[j] === "Materias") columnaMaterias = j;
+        if (row[j] === "Profesor") columnaProfesores = j;
+      }
+    }
+    
+    // Extraer alumnos
+    const alumnosEncontrados = [];
+    if (columnaAlumnos !== null && columnaMatriculas !== null) {
+      for (let i = 0; i < jsonData.length; i++) {
+        const row = jsonData[i];
+        if (row[columnaAlumnos] && 
+            typeof row[columnaAlumnos] === 'string' && 
+            row[columnaAlumnos].includes(',') && 
+            row[columnaMatriculas]) {
+          
+          // Verificar si ya existe
+          const existente = alumnosEncontrados.find(a => a.matricula === row[columnaMatriculas]);
+          if (!existente) {
+            alumnosEncontrados.push({
+              id: alumnosEncontrados.length + 1,
+              nombre: row[columnaAlumnos],
+              matricula: row[columnaMatriculas]
+            });
+          }
+        }
+      }
+    }
+    
+    // Extraer materias y profesores
+    const materiasEncontradas = [];
+    const profesoresEncontrados = [];
+    if (columnaMaterias !== null && columnaProfesores !== null) {
+      for (let i = 0; i < jsonData.length; i++) {
+        const row = jsonData[i];
+        if (row[columnaMaterias] && typeof row[columnaMaterias] === 'string' &&
+            row[columnaProfesores] && typeof row[columnaProfesores] === 'string') {
+          
+          // Verificar si ya existe la materia
+          const existenteMateria = materiasEncontradas.find(m => m.nombre === row[columnaMaterias]);
+          if (!existenteMateria && row[columnaMaterias] !== "Materias") {
+            materiasEncontradas.push({
+              id: materiasEncontradas.length + 1,
+              nombre: row[columnaMaterias]
+            });
+          }
+          
+          // Verificar si ya existe el profesor
+          const existenteProfesor = profesoresEncontrados.find(p => p.nombre === row[columnaProfesores]);
+          if (!existenteProfesor && row[columnaProfesores] !== "Profesor") {
+            profesoresEncontrados.push({
+              id: profesoresEncontrados.length + 1,
+              nombre: row[columnaProfesores],
+              materias: [row[columnaMaterias]]
+            });
+          } else if (existenteProfesor && row[columnaProfesores] !== "Profesor") {
+            if (!existenteProfesor.materias.includes(row[columnaMaterias])) {
+              existenteProfesor.materias.push(row[columnaMaterias]);
+            }
+          }
+        }
+      }
+    }
+    
+    // Actualizar estado
+    setAlumnos(alumnosEncontrados);
+    setMaterias(materiasEncontradas);
+    setProfesores(profesoresEncontrados);
+    
+    // Crear estructura para calificaciones
+    const calificacionesIniciales = [];
+    for (const alumno of alumnosEncontrados) {
+      for (const materia of materiasEncontradas) {
+        for (const periodo of periodos) {
+          calificacionesIniciales.push({
+            alumnoId: alumno.id,
+            materiaId: materia.id,
+            periodo: periodo,
+            actividades: '',
+            valoracion: '',
+            desempeno: '',
+            observaciones: '',
+            calificacionNumerica: null
+          });
+        }
+      }
+    }
+    
+    setCalificaciones(calificacionesIniciales);
+  };
+
+  // Función para generar informe de un alumno
+  const generarInformeAlumno = (alumnoId) => {
+    const alumno = alumnos.find(a => a.id === alumnoId);
+    if (!alumno) return null;
+    
+    const calificacionesAlumno = calificaciones.filter(c => c.alumnoId === alumnoId);
+    
+    return (
+      <div className="p-6 bg-white rounded shadow">
+        <div className="flex justify-between items-start mb-4">
+          <div>
+            <h3 className="text-xl font-bold">Informe de Avance</h3>
+            <h4 className="text-lg font-semibold">{alumno.nombre}</h4>
+            <p className="text-gray-600">Matrícula: {alumno.matricula}</p>
+          </div>
+          <button 
+            onClick={() => exportarInformeExcel(alumnoId)}
+            className="flex items-center bg-blue-600 text-white px-3 py-2 rounded hover:bg-blue-700">
+            <DownloadCloud className="w-4 h-4 mr-2" />
+            Exportar
+          </button>
+        </div>
+        
+        {periodos.map(periodo => {
+          // Filtrar materias con calificaciones para este periodo
+          const materiasConCalificaciones = materias.filter(materia => {
+            const cal = calificacionesAlumno.find(c => 
+              c.materiaId === materia.id && c.periodo === periodo
+            );
+            return cal && (cal.desempeno || cal.valoracion || cal.observaciones);
+          });
+          
+          if (materiasConCalificaciones.length === 0) return null;
+          
+          return (
+            <div key={periodo} className="mb-6">
+              <h4 className="text-lg font-semibold border-b pb-2 mb-3">{periodo}</h4>
+              <div className="grid grid-cols-1 gap-4">
+                {materiasConCalificaciones.map(materia => {
+                  const cal = calificacionesAlumno.find(c => 
+                    c.materiaId === materia.id && c.periodo === periodo
+                  );
+                  
+                  if (!cal) return null;
+                  
+                  return (
+                    <div key={`${periodo}-${materia.id}`} className="p-3 bg-gray-50 rounded">
+                      <h5 className="font-medium">{materia.nombre}</h5>
+                      <div className="grid grid-cols-2 gap-2 mt-2 text-sm">
+                        <div>
+                          <span className="font-semibold">Valoración:</span> {cal.valoracion || '-'}
+                        </div>
+                        <div>
+                          <span className="font-semibold">Desempeño:</span> {cal.desempeno || '-'}
+                        </div>
+                        <div>
+                          <span className="font-semibold">Actividades:</span> {cal.actividades || '-'}
+                        </div>
+                        <div>
+                          <span className="font-semibold">Calificación:</span> {cal.calificacionNumerica || '-'}
+                        </div>
+                      </div>
+                      {cal.observaciones && (
+                        <div className="mt-2 text-sm">
+                          <span className="font-semibold">Observaciones:</span> {cal.observaciones}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+// Función para generar boletín
+  const generarBoletin = (alumnoId) => {
+    const alumno = alumnos.find(a => a.id === alumnoId);
+    if (!alumno) return null;
+    
+    // Filtrar calificaciones por cuatrimestres y cierre anual
+    const periodosCuatrimestrales = ['1er Cuatrimestre', '2do Cuatrimestre', 'Cierre Anual'];
+    const calificacionesAlumno = calificaciones.filter(c => 
+      c.alumnoId === alumnoId && periodosCuatrimestrales.includes(c.periodo)
+    );
+    
+    return (
+      <div className="p-6 bg-white rounded shadow">
+        <div className="flex justify-between items-start mb-4">
+          <div className="text-center flex-1">
+            <h3 className="text-2xl font-bold">ESCUELA TÉCNICA HENRY FORD</h3>
+            <h4 className="text-xl">Boletín de Calificaciones</h4>
+            <p className="text-lg mt-2">{alumno.nombre} - Matrícula: {alumno.matricula}</p>
+            <p className="mt-1">Ciclo lectivo 2025 - 6to Año</p>
+          </div>
+          <button 
+            onClick={() => exportarBoletinExcel(alumnoId)}
+            className="flex items-center bg-blue-600 text-white px-3 py-2 rounded hover:bg-blue-700">
+            <DownloadCloud className="w-4 h-4 mr-2" />
+            Exportar
+          </button>
+        </div>
+        
+        <table className="w-full border-collapse">
+          <thead>
+            <tr className="bg-gray-100">
+              <th className="border p-2 text-left">Materia</th>
+              <th className="border p-2 text-center">1er Cuatrimestre</th>
+              <th className="border p-2 text-center">2do Cuatrimestre</th>
+              <th className="border p-2 text-center">Calificación Final</th>
+            </tr>
+          </thead>
+          <tbody>
+            {materias.map(materia => {
+              const cal1C = calificacionesAlumno.find(c => 
+                c.materiaId === materia.id && c.periodo === '1er Cuatrimestre'
+              );
+              const cal2C = calificacionesAlumno.find(c => 
+                c.materiaId === materia.id && c.periodo === '2do Cuatrimestre'
+              );
+              const calFinal = calificacionesAlumno.find(c => 
+                c.materiaId === materia.id && c.periodo === 'Cierre Anual'
+              );
+              
+              return (
+                <tr key={materia.id}>
+                  <td className="border p-2">{materia.nombre}</td>
+                  <td className="border p-2 text-center">{cal1C?.calificacionNumerica || '-'}</td>
+                  <td className="border p-2 text-center">{cal2C?.calificacionNumerica || '-'}</td>
+                  <td className="border p-2 text-center font-semibold">
+                    {calFinal?.calificacionNumerica || '-'}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        
+        <div className="mt-6 flex justify-between">
+          <div className="w-1/3 border-t pt-2">Firma del Director</div>
+          <div className="w-1/3 border-t pt-2 text-center">Firma del Tutor</div>
+          <div className="w-1/3 border-t pt-2 text-right">Firma del Alumno</div>
+        </div>
+      </div>
+    );
+  };
+
+  // Renderizado de la interfaz de usuario
+  return (
+    <div className="bg-gray-100 min-h-screen flex flex-col">
+      {/* Encabezado */}
+      <header className="bg-blue-700 text-white p-4 shadow-md">
+        <div className="container mx-auto flex justify-between items-center">
+          <h1 className="text-2xl font-bold">Sistema de Gestión de Notas - Henry Ford</h1>
+          <div className="flex items-center space-x-2">
+            <button 
+              onClick={() => setVistaActual('inicio')}
+              className="bg-white text-blue-700 px-3 py-1 rounded hover:bg-blue-100 font-medium"
+            >
+              Inicio
+            </button>
+            {archivosCargados > 0 && (
+              <button 
+                onClick={guardarDatos}
+                className="bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 flex items-center"
+              >
+                <Save className="w-4 h-4 mr-1" /> Guardar
+              </button>
+            )}
+          </div>
+        </div>
+      </header>
+      
+      {/* Mensaje de estado */}
+      {mensaje && (
+        <div className="bg-blue-100 border-l-4 border-blue-500 text-blue-700 p-4 m-4">
+          <p>{mensaje}</p>
+        </div>
+      )}
+      
+      {/* Contenido principal */}
+      <main className="container mx-auto flex-grow p-4">
+        {vistaActual === 'inicio' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="bg-white p-6 rounded shadow">
+              <h2 className="text-xl font-bold mb-4 flex items-center">
+                <Upload className="w-5 h-5 mr-2" /> Cargar datos
+              </h2>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-gray-700 mb-2">Cargar planilla de Excel</label>
+                  <input 
+                    type="file" 
+                    accept=".xlsx,.xls" 
+                    onChange={handleFileUpload}
+                    className="border p-2 w-full rounded"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-gray-700 mb-2">Importar datos guardados (JSON)</label>
+                  <input 
+                    type="file" 
+                    accept=".json" 
+                    onChange={importarDatosJSON}
+                    className="border p-2 w-full rounded"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-gray-700 mb-2">Importar planilla de profesor</label>
+                  <input 
+                    type="file" 
+                    accept=".xlsx,.xls" 
+                    onChange={importarPlanillaProfesor}
+                    className="border p-2 w-full rounded"
+                  />
+                </div>
+                
+                <button 
+                  onClick={cargarDatosGuardados}
+                  className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 w-full"
+                >
+                  Cargar datos guardados localmente
+                </button>
+              </div>
+            </div>
+            
+            <div className="bg-white p-6 rounded shadow">
+              <h2 className="text-xl font-bold mb-4">Gestión</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <button 
+                  onClick={() => setVistaActual('carga')}
+                  className="bg-indigo-600 text-white p-4 rounded hover:bg-indigo-700 flex flex-col items-center"
+                  disabled={alumnos.length === 0}
+                >
+                  <CheckSquare className="w-8 h-8 mb-2" />
+                  Carga de notas
+                </button>
+                
+                <button 
+                  onClick={() => setVistaActual('informes')}
+                  className="bg-teal-600 text-white p-4 rounded hover:bg-teal-700 flex flex-col items-center"
+                  disabled={alumnos.length === 0 || calificaciones.length === 0}
+                >
+                  <FileText className="w-8 h-8 mb-2" />
+                  Informes de avance
+                </button>
+                
+                <button 
+                  onClick={() => setVistaActual('boletines')}
+                  className="bg-amber-600 text-white p-4 rounded hover:bg-amber-700 flex flex-col items-center"
+                  disabled={alumnos.length === 0 || calificaciones.length === 0}
+                >
+                  <BookOpen className="w-8 h-8 mb-2" />
+                  Boletines
+                </button>
+                
+                <button 
+                  onClick={() => setVistaActual('exportar')}
+                  className="bg-cyan-600 text-white p-4 rounded hover:bg-cyan-700 flex flex-col items-center"
+                  disabled={profesores.length === 0}
+                >
+                  <DownloadCloud className="w-8 h-8 mb-2" />
+                  Exportar planillas
+                </button>
+              </div>
+              
+              {alumnos.length > 0 && (
+                <div className="mt-6">
+                  <h3 className="font-semibold mb-2">Datos actuales:</h3>
+                  <ul className="text-gray-700">
+                    <li>Alumnos: {alumnos.length}</li>
+                    <li>Materias: {materias.length}</li>
+                    <li>Profesores: {profesores.length}</li>
+                    <li>Calificaciones: {calificaciones.length}</li>
+                  </ul>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+{vistaActual === 'carga' && (
+          <div className="bg-white p-6 rounded shadow">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-bold">Carga de calificaciones</h2>
+              <button 
+                onClick={() => setVistaActual('inicio')}
+                className="flex items-center text-gray-700 hover:text-blue-600"
+              >
+                <ArrowLeft className="w-4 h-4 mr-1" /> Volver
+              </button>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+              <div>
+                <label className="block text-gray-700 mb-2">Seleccione un profesor</label>
+                <select 
+                  value={profesorActual || ''}
+                  onChange={(e) => setProfesorActual(e.target.value ? Number(e.target.value) : null)}
+                  className="border p-2 w-full rounded"
+                >
+                  <option value="">Seleccione un profesor</option>
+                  {profesores.map(profesor => (
+                    <option key={profesor.id} value={profesor.id}>
+                      {profesor.nombre}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              
+              <div>
+                <label className="block text-gray-700 mb-2">Seleccione una materia</label>
+                <select 
+                  value={materiaSeleccionada || ''}
+                  onChange={(e) => setMateriaSeleccionada(e.target.value ? Number(e.target.value) : null)}
+                  className="border p-2 w-full rounded"
+                  disabled={!profesorActual || materiasProfesor.length === 0}
+                >
+                  <option value="">Seleccione una materia</option>
+                  {materiasProfesor.map(materia => (
+                    <option key={materia.id} value={materia.id}>
+                      {materia.nombre}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              
+              <div>
+                <label className="block text-gray-700 mb-2">Seleccione un período</label>
+                <select 
+                  value={periodoActual}
+                  onChange={(e) => setPeriodoActual(e.target.value)}
+                  className="border p-2 w-full rounded"
+                >
+                  {periodos.map(periodo => (
+                    <option key={periodo} value={periodo}>
+                      {periodo}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            
+            {profesorActual && materiaSeleccionada && (
+              <div className="mt-4">
+                <div className="mb-4">
+                  <label className="block text-gray-700 mb-2">Buscar alumno</label>
+                  <input 
+                    type="text" 
+                    value={busquedaAlumno}
+                    onChange={(e) => setBusquedaAlumno(e.target.value)}
+                    placeholder="Nombre del alumno..."
+                    className="border p-2 w-full rounded"
+                  />
+                </div>
+                
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse">
+                    <thead>
+                      <tr className="bg-gray-100">
+                        <th className="border p-2 text-left">Alumno</th>
+                        <th className="border p-2 text-center">Actividades</th>
+                        <th className="border p-2 text-center">Valoración</th>
+                        <th className="border p-2 text-center">Desempeño</th>
+                        <th className="border p-2 text-center">Calificación</th>
+                        <th className="border p-2 text-center">Observaciones</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {alumnos
+                        .filter(alumno => 
+                          busquedaAlumno === '' || 
+                          alumno.nombre.toLowerCase().includes(busquedaAlumno.toLowerCase())
+                        )
+                        .map(alumno => {
+                          // Buscar calificación para este alumno, materia y período
+                          const cal = calificaciones.find(c => 
+                            c.alumnoId === alumno.id && 
+                            c.materiaId === materiaSeleccionada && 
+                            c.periodo === periodoActual
+                          );
+                          
+                          return (
+                            <tr key={alumno.id} className="hover:bg-gray-50">
+                              <td className="border p-2">
+                                {alumno.nombre} <span className="text-gray-500 text-sm">({alumno.matricula})</span>
+                              </td>
+                              <td className="border p-2">
+                                <select 
+                                  value={cal?.actividades || ''}
+                                  onChange={(e) => actualizarCalificacion(
+                                    alumno.id, 
+                                    materiaSeleccionada, 
+                                    periodoActual, 
+                                    'actividades', 
+                                    e.target.value
+                                  )}
+                                  className="border p-1 w-full rounded"
+                                >
+                                  <option value="">-</option>
+                                  <option value="A">A</option>
+                                  <option value="N/C">N/C</option>
+                                </select>
+                              </td>
+                              <td className="border p-2">
+                                <select 
+                                  value={cal?.valoracion || ''}
+                                  onChange={(e) => actualizarCalificacion(
+                                    alumno.id, 
+                                    materiaSeleccionada, 
+                                    periodoActual, 
+                                    'valoracion', 
+                                    e.target.value
+                                  )}
+                                  className="border p-1 w-full rounded"
+                                  title={cal?.valoracion ? descripcionValoracion[cal.valoracion] : ''}
+                                >
+                                  <option value="">-</option>
+                                  {opcionesValoracion.map(op => (
+                                    <option key={op} value={op} title={descripcionValoracion[op]}>
+                                      {op}
+                                    </option>
+                                  ))}
+                                </select>
+                              </td>
+                              <td className="border p-2">
+                                <select 
+                                  value={cal?.desempeno || ''}
+                                  onChange={(e) => actualizarCalificacion(
+                                    alumno.id, 
+                                    materiaSeleccionada, 
+                                    periodoActual, 
+                                    'desempeno', 
+                                    e.target.value
+                                  )}
+                                  className="border p-1 w-full rounded"
+                                  title={cal?.desempeno ? descripcionDesempeno[cal.desempeno] : ''}
+                                >
+                                  <option value="">-</option>
+                                  {opcionesDesempeno.map(op => (
+                                    <option key={op} value={op} title={descripcionDesempeno[op]}>
+                                      {op}
+                                    </option>
+                                  ))}
+                                </select>
+                              </td>
+                              <td className="border p-2">
+                                <input 
+                                  type="number" 
+                                  min="1" 
+                                  max="10" 
+                                  value={cal?.calificacionNumerica || ''}
+                                  onChange={(e) => actualizarCalificacion(
+                                    alumno.id, 
+                                    materiaSeleccionada, 
+                                    periodoActual, 
+                                    'calificacionNumerica', 
+                                    e.target.value ? Number(e.target.value) : null
+                                  )}
+                                  className="border p-1 w-full rounded"
+                                />
+                              </td>
+                              <td className="border p-2">
+                                <input 
+                                  type="text"
+                                  value={cal?.observaciones || ''}
+                                  onChange={(e) => actualizarCalificacion(
+                                    alumno.id, 
+                                    materiaSeleccionada, 
+                                    periodoActual, 
+                                    'observaciones', 
+                                    e.target.value
+                                  )}
+                                  className="border p-1 w-full rounded"
+                                  placeholder="Observaciones..."
+                                />
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+{vistaActual === 'informes' && (
+          <div className="bg-white p-6 rounded shadow">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-bold">Informes de avance</h2>
+              <button 
+                onClick={() => setVistaActual('inicio')}
+                className="flex items-center text-gray-700 hover:text-blue-600"
+              >
+                <ArrowLeft className="w-4 h-4 mr-1" /> Volver
+              </button>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+              <div className="md:col-span-2">
+                <label className="block text-gray-700 mb-2">Buscar alumno</label>
+                <input 
+                  type="text" 
+                  value={busquedaAlumno}
+                  onChange={(e) => setBusquedaAlumno(e.target.value)}
+                  placeholder="Nombre del alumno..."
+                  className="border p-2 w-full rounded"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-gray-700 mb-2">Seleccione un período</label>
+                <select 
+                  value={periodoActual}
+                  onChange={(e) => setPeriodoActual(e.target.value)}
+                  className="border p-2 w-full rounded"
+                >
+                  {periodos.map(periodo => (
+                    <option key={periodo} value={periodo}>
+                      {periodo}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="bg-gray-50 p-4 rounded">
+                <h3 className="font-semibold mb-3">Seleccione un alumno</h3>
+                <div className="max-h-96 overflow-y-auto">
+                  <ul>
+                    {alumnos
+                      .filter(alumno => 
+                        busquedaAlumno === '' || 
+                        alumno.nombre.toLowerCase().includes(busquedaAlumno.toLowerCase())
+                      )
+                      .map(alumno => (
+                        <li 
+                          key={alumno.id}
+                          onClick={() => setAlumnoSeleccionado(alumno.id)}
+                          className={`p-2 cursor-pointer rounded mb-1 ${
+                            alumnoSeleccionado === alumno.id ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-100'
+                          }`}
+                        >
+                          {alumno.nombre}
+                        </li>
+                      ))}
+                  </ul>
+                </div>
+              </div>
+              
+              <div className="md:col-span-2">
+                {alumnoSeleccionado && generarInformeAlumno(alumnoSeleccionado)}
+                {!alumnoSeleccionado && (
+                  <div className="bg-gray-50 p-6 rounded flex flex-col items-center justify-center h-full">
+                    <User className="w-12 h-12 text-gray-400 mb-2" />
+                    <p>Seleccione un alumno para visualizar su informe</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {vistaActual === 'boletines' && (
+          <div className="bg-white p-6 rounded shadow">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-bold">Boletines</h2>
+              <button 
+                onClick={() => setVistaActual('inicio')}
+                className="flex items-center text-gray-700 hover:text-blue-600"
+              >
+                <ArrowLeft className="w-4 h-4 mr-1" /> Volver
+              </button>
+            </div>
+            
+            <div className="mb-6">
+              <label className="block text-gray-700 mb-2">Buscar alumno</label>
+              <input 
+                type="text" 
+                value={busquedaAlumno}
+                onChange={(e) => setBusquedaAlumno(e.target.value)}
+                placeholder="Nombre del alumno..."
+                className="border p-2 w-full rounded"
+              />
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="bg-gray-50 p-4 rounded">
+                <h3 className="font-semibold mb-3">Seleccione un alumno</h3>
+                <div className="max-h-96 overflow-y-auto">
+                  <ul>
+                    {alumnos
+                      .filter(alumno => 
+                        busquedaAlumno === '' || 
+                        alumno.nombre.toLowerCase().includes(busquedaAlumno.toLowerCase())
+                      )
+                      .map(alumno => (
+                        <li 
+                          key={alumno.id}
+                          onClick={() => setAlumnoSeleccionado(alumno.id)}
+                          className={`p-2 cursor-pointer rounded mb-1 ${
+                            alumnoSeleccionado === alumno.id ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-100'
+                          }`}
+                        >
+                          {alumno.nombre}
+                        </li>
+                      ))}
+                  </ul>
+                </div>
+              </div>
+              
+              <div className="md:col-span-3">
+                {alumnoSeleccionado && generarBoletin(alumnoSeleccionado)}
+                {!alumnoSeleccionado && (
+                  <div className="bg-gray-50 p-6 rounded flex flex-col items-center justify-center h-full">
+                    <BookOpen className="w-12 h-12 text-gray-400 mb-2" />
+                    <p>Seleccione un alumno para visualizar su boletín</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {vistaActual === 'exportar' && (
+          <div className="bg-white p-6 rounded shadow">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-bold">Exportar planillas para profesores</h2>
+              <button 
+                onClick={() => setVistaActual('inicio')}
+                className="flex items-center text-gray-700 hover:text-blue-600"
+              >
+                <ArrowLeft className="w-4 h-4 mr-1" /> Volver
+              </button>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+              <div>
+                <label className="block text-gray-700 mb-2">Seleccione un profesor</label>
+                <select 
+                  value={profesorActual || ''}
+                  onChange={(e) => setProfesorActual(e.target.value ? Number(e.target.value) : null)}
+                  className="border p-2 w-full rounded"
+                >
+                  <option value="">Seleccione un profesor</option>
+                  {profesores.map(profesor => (
+                    <option key={profesor.id} value={profesor.id}>
+                      {profesor.nombre}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              
+              <div>
+                <label className="block text-gray-700 mb-2">Seleccione una materia</label>
+                <select 
+                  value={materiaSeleccionada || ''}
+                  onChange={(e) => setMateriaSeleccionada(e.target.value ? Number(e.target.value) : null)}
+                  className="border p-2 w-full rounded"
+                  disabled={!profesorActual || materiasProfesor.length === 0}
+                >
+                  <option value="">Seleccione una materia</option>
+                  {materiasProfesor.map(materia => (
+                    <option key={materia.id} value={materia.id}>
+                      {materia.nombre}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            
+            <div className="flex justify-center mt-6">
+              <button 
+                onClick={() => exportarPlanillaProfesor(profesorActual, materiaSeleccionada)}
+                disabled={!profesorActual || !materiaSeleccionada}
+                className={`flex items-center px-6 py-3 rounded text-white ${
+                  profesorActual && materiaSeleccionada 
+                    ? 'bg-green-600 hover:bg-green-700' 
+                    : 'bg-gray-400 cursor-not-allowed'
+                }`}
+              >
+                <DownloadCloud className="w-5 h-5 mr-2" />
+                Exportar planilla para el profesor
+              </button>
+            </div>
+          </div>
+        )}
+      </main>
+      
+      {/* Pie de página */}
+      <footer className="bg-gray-800 text-white p-4 mt-8">
+        <div className="container mx-auto text-center">
+          <p>Sistema de Gestión de Notas - Escuela Técnica Henry Ford &copy; 2025</p>
+        </div>
+      </footer>
+    </div>
+  );
+};
+
+export default SistemaNotas;
